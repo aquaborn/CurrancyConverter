@@ -1,14 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Mail;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Web.Http;
 using TestWebApplication.Interfaces;
-using TestWebApplication.Models;
-using TestWebApplication.ResultModels;
 
 namespace TestWebApplication.Controllers
 {
@@ -16,65 +9,113 @@ namespace TestWebApplication.Controllers
     /// Методы для выполнения тестового задания
     /// </summary>
     public class TestController : ApiController
-    {        
+    {
+
         /// <summary>
         /// Репозиторий для таблицы сотрудников
         /// </summary>
-        private readonly IBaseRepository<Employees> _employeesRepository;
+        private readonly CurrancyInterface<Dictionary<string, decimal>> _currancyRepository;
 
-        public TestController( IBaseRepository<Employees> employeesRepository)
+        public TestController(CurrancyInterface<Dictionary<string, decimal>> currancyRepository)
         {
-            _employeesRepository = employeesRepository;
+            _currancyRepository = currancyRepository;
         }
 
         /// <summary>
-        /// Получить список сотрудников, входящих в группу по ее идентификатору
+        /// ПОлучить текущее значение валют
         /// </summary>
-        /// <param name="Id">Идентификатор группы</param>
+        /// <param name="exchangeRates">Курсы валют</param>
         /// <returns>Список сотрудников</returns>
         [HttpGet]
-        public async Task<List<EmployeesModel>> GetEmployeesByGroupId(Guid Id)
-        {                        
-            //Сотрудники, принадлежащие группе через кросс-таблицу
-            var employees = await _employeesRepository.ListAsync(x => x.Groups.Any(s => s.GroupID == Id));            
-            return employees.Select(x=> new  EmployeesModel {Id =  x.ID,FullName = x.FullName}).ToList();
+        public async Task PostBaseCurrancy(Dictionary<string, decimal> exchangeRates) => _currancyRepository.GetCurrentCurrancy(exchangeRates);
+
+        /// <summary>
+        /// Задать базовую валюту
+        /// </summary>
+        /// <param name="baseCurrancyName">Наименование базовой валюты</param>
+        /// <returns>Список сотрудников</returns>
+        [HttpPost]
+        public Dictionary<string, decimal> PostBaseCurrancy(string baseCurrancyName)
+        {
+            Dictionary<string, decimal> exchangeRates = new Dictionary<string, decimal>();
+            exchangeRates.Add(baseCurrancyName, 1);
+            return exchangeRates;
         }
 
         /// <summary>
-        /// Отправка письма всем сотрудникам кроме "Руководства"
+        /// Добавить валюту
         /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyName">Наименование нового курса</param>
+        /// <param name="currancyValue">Курс валюты к базовой (значение)</param>
+        /// <returns></returns>
         [HttpPost]
-        public async Task<IHttpActionResult> SendEmails(string textMessage)
+        public async Task PostNewCurrancyRates(Dictionary<string, decimal> exchangeRates, string currancyName, decimal currancyValue)
+            => _currancyRepository.AddCurrancy(exchangeRates, currancyName, currancyValue);
+
+        /// <summary>
+        /// Удалить валюту
+        /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyName">Наименование нового курса</param> 
+        [HttpDelete]
+        public async Task DeleteNewCurrancyRates(Dictionary<string, decimal> exchangeRates, string currancyName)
+         => _currancyRepository.DeleteCurrancy(exchangeRates, currancyName);
+
+        /// <summary>
+        /// Редактировать валюту
+        /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyName">Наименование курса, который нужно отредактировать</param>
+        /// <param name="currancyValue">Курс валюты к базовой (значение)</param>
+        [HttpPut]
+        public async Task UpdateNewCurrancyRates(Dictionary<string, decimal> exchangeRates, string currancyName, decimal newValue)
+         => _currancyRepository.EditCurrancy(exchangeRates, currancyName, newValue);
+
+        /// <summary>
+        /// Конвертировать валюту
+        /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyNameOld">Наименование текущего курса</param>
+        /// <param name="currancyNameNew">Наименование курса по которому нужно конвертировать</param>
+        /// <param name="currancyValue">Значение по текущему курсу</param>
+        [HttpGet]
+        public async Task<decimal> ConvertMoneyForCurrancyRate(Dictionary<string, decimal> exchangeRates, string currancyNameOld, string currancyNameNew, decimal currentValue)
+            => await _currancyRepository.ConvertMoney(exchangeRates, currancyNameOld, currancyNameNew, currentValue);
+
+        /// <summary>
+        /// Сложение валют
+        /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyNamesandValues">Словарь валют которые необходимо сложить и  значений</param>
+
+        [HttpGet]
+        public async Task<decimal> AdditionMoneyForCurrancyRate(Dictionary<string, decimal> exchangeRates, Dictionary<string, decimal> currancyNamesandValues)
         {
-            //Получаем список пользователей, не сходящих в группу "Руководство"
-            var notifiedUsers = await _employeesRepository.ListAsync(x => x.Groups.Any(s => s.Group.GroupType != Enums.GroupEnum.Head));
-            if (notifiedUsers != null)
+            decimal result = 0;
+            foreach (var item in currancyNamesandValues)
             {
-                MailAddress from = new MailAddress("maxim@gmail.com", "Maxim");
-                SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587);
-                smtp.Credentials = new NetworkCredential("maxim@gmail.com", "mypassword");
-                smtp.EnableSsl = true;
-                foreach (var user in notifiedUsers)
-                {
-                    MailAddress to = new MailAddress(user.Email);
-                    MailMessage m = new MailMessage(from, to);
-                    m.Subject = "Тест";
-                    m.Body = textMessage;
-                    try
-                    {
-                        await smtp.SendMailAsync(m);
-                    }
-                    catch
-                    {
-                        return BadRequest($"Невозможно отправить письмо сотруднику{user.FullName}. Ошибка Smtp-сервера");
-                    }
-                }
-                return Ok("Письма отправлены");
+                result += item.Value / exchangeRates[item.Key];
             }
-            else
-            {
-                return NotFound();
-            }
+            return result;
         }
+
+        /// <summary>
+        /// Сложение валют
+        /// </summary>
+        /// <param name="exchangeRates">Курсы валют</param>
+        /// <param name="currancyNamesandValues">Словарь валют которые необходимо сложить и  значений</param>
+
+        [HttpGet]
+        public async Task<decimal> SubTractionMoneyForCurrancyRate(Dictionary<string, decimal> exchangeRates, Dictionary<string, decimal> currancyNamesandValues)
+        {
+            decimal result = 0;
+            foreach (var item in currancyNamesandValues)
+            {
+                result -= item.Value / exchangeRates[item.Key];
+            }
+            return result;
+        }
+
     }
 }

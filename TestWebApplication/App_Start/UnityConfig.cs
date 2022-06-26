@@ -4,7 +4,6 @@ using System.Linq;
 using System.Web;
 using System.Web.Http;
 using TestWebApplication.Interfaces;
-using TestWebApplication.Models;
 using TestWebApplication.Repositories;
 using Unity;
 using Unity.Lifetime;
@@ -27,7 +26,7 @@ namespace TestWebApplication.App_Start
 
         private static void RegisterTypes(UnityContainer container)
         {
-            container.RegisterType<IBaseRepository<Employees>, BaseRepository<Employees>>(new HierarchicalLifetimeManager());
+            container.RegisterType<CurrancyInterface<Dictionary<string, decimal>>, CurrancyRepository<Dictionary<string, decimal>>>(new HierarchicalLifetimeManager());
         }
     }
 }
